@@ -82,6 +82,60 @@ index 1965d4f..8793fae 100644
  
  $(eval $(call library,arch,$(LIBARCH_SOURCES),$(LIBARCH_LINK)))
  $(eval $(call library,exception_hook,exception_hook.cc,dl))
+diff --git a/arch/cpu_info.cc b/arch/cpu_info.cc
+index 708a09a..0b91046 100644
+--- a/arch/cpu_info.cc
++++ b/arch/cpu_info.cc
+@@ -8,7 +8,7 @@
+ 
+ #include <fstream>
+ #include <iostream>
+-
++#include <stdio.h>
+ 
+ using namespace std;
+ 
+@@ -19,10 +19,30 @@ int num_cpus_result = 0;
+ 
+ void init_num_cpus()
+ {
+-    ifstream stream("/proc/cpuinfo");
++    //ifstream stream("/proc/cpuinfo");
+ 
+     int ncpus = 0;
++    
++    char p_output[3];
++
++    FILE * pFile = popen("sysctl -a | grep machdep.cpu.thread_count  | sed 's/machdep.cpu.thread_count: //g'", "r");
++
++    if ( pFile )
++       if ( fgets(p_output, sizeof(p_output), pFile) ) {
++
++           if (p_output[0] >= '0' && p_output[0] <= '9') {
++              if (p_output[1] >= '0' && p_output[1] <= '9') //two digits
++                 ncpus = 10* (int)(p_output[0]-'0') + (int)(p_output[1]-'0');
++              else
++                 ncpus = (int)(p_output[0]-'0');     
++           }
+ 
++        }
++          
++
++    pclose(pFile);
++
++/*
+     while (stream) {
+         string line;
+         getline(stream, line);
+@@ -33,7 +53,7 @@ void init_num_cpus()
+         //cerr << "found = " << found << endl;
+         if (found == 0) ++ncpus;
+     }
+-
++*/
+     //cerr << "ncpus = " << ncpus << endl;
+ 
+     if (ncpus == 0)
 diff --git a/arch/environment_static.cc b/arch/environment_static.cc
 index 27a7e9d..dd62a47 100644
 --- a/arch/environment_static.cc
@@ -293,6 +347,40 @@ index d386652..109c068 100644
      for (;;) {
          if (timeout.tv_sec < 0 || timeout.tv_usec < 0) break;
          int res = select(0, 0, 0, 0, &timeout);
+diff --git a/boosting/bagging_generator.cc b/boosting/bagging_generator.cc
+index 3c6e1df..d622c6b 100644
+--- a/boosting/bagging_generator.cc
++++ b/boosting/bagging_generator.cc
+@@ -21,7 +21,7 @@
+ #include "jml/utils/guard.h"
+ #include <boost/bind.hpp>
+ #include "jml/utils/smart_ptr_utils.h"
+-
++#include "jml/arch/cpu_info.h"
+ 
+ using namespace std;
+ 
+@@ -247,6 +247,8 @@ generate(Thread_Context & context,
+     //     << endl;
+ 
+     bool local_thread_only = (num_bags > num_threads() * 2);
++    
++    cerr<<"local_thread_only: "<<local_thread_only<<"   num_threads(): "<<num_threads()<<"   num_cpus(): "<<num_cpus()<<endl;
+ 
+     vector<std::shared_ptr<Classifier_Impl> > results(num_bags);
+     vector<Thread_Context> contexts(num_bags);
+@@ -256,8 +258,11 @@ generate(Thread_Context & context,
+     Bag_Job_Info info(training_set, training_ex_weights,
+                       features, results,
+                       train_prop, weak_learner, num_bags);
++    
++    
+     static Worker_Task & worker = Worker_Task::instance(num_threads() - 1);
+     
++    
+     int group;
+     {
+         group = worker.get_group(NO_JOB,
 diff --git a/boosting/boosted_stumps.cc b/boosting/boosted_stumps.cc
 index 5f5a4a2..b04a593 100644
 --- a/boosting/boosted_stumps.cc
@@ -1115,3 +1203,15 @@ index 28a3944..25f8964 100644
  
  $(eval $(call library,utils,$(LIBUTILS_SOURCES),$(LIBUTILS_LINK)))
  
+diff --git a/utils/worker_task.cc b/utils/worker_task.cc
+index 5e5df9f..2f83b4f 100644
+--- a/utils/worker_task.cc
++++ b/utils/worker_task.cc
+@@ -47,6 +47,7 @@ Worker_Task &
+ Worker_Task::
+ instance(int thr)
+ {
++   
+     static Worker_Task result(thr);
+     return result;
+ }
